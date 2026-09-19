@@ -1,14 +1,18 @@
 /**
- * 80s Synthwave Background Engine
+ * 80s Synthwave Background Engine (Chrome-Optimized)
  * Features: Pulsing Sun, Vector Mountains, 3D Moving Perspective Grid, Mirror Scanline Shimmer
  */
 
 const canvas = document.getElementById('retroCanvas');
 const ctx = canvas.getContext('2d');
 
+// Fixed Offscreen Buffer Canvas initialized ONCE to prevent Chrome memory crashes
+const offscreenCanvas = document.createElement('canvas');
+const oCtx = offscreenCanvas.getContext('2d');
+
 // Application State Tracking
-let width = canvas.width = window.innerWidth;
-let height = canvas.height = window.innerHeight;
+let width = canvas.width = offscreenCanvas.width = window.innerWidth;
+let height = canvas.height = offscreenCanvas.height = window.innerHeight;
 
 let time = 0;
 let gridSpeed = 2; // Speed of the forward grid movement
@@ -26,8 +30,8 @@ const mountainPeaks = [
 
 // Handle Window Resizing gracefully
 window.addEventListener('resize', () => {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
+    width = canvas.width = offscreenCanvas.width = window.innerWidth;
+    height = canvas.height = offscreenCanvas.height = window.innerHeight;
 });
 
 /**
@@ -62,7 +66,7 @@ function drawSun() {
     let centerX = width * 0.5;
     let baseRadius = Math.min(width, height) * 0.22;
     
-    // Math.sin creates a smooth looping breathing animation scale
+    // Smooth looping breathing animation scale
     let pulseScale = 1 + Math.sin(time * 0.02) * 0.025;
     let radius = baseRadius * pulseScale;
 
@@ -105,7 +109,6 @@ function drawMountains() {
         let x = mountainPeaks[i].rX * width;
         let y = mountainPeaks[i].rY * height;
         
-        // Push mountains up slightly relative to window scale
         if (y > horizonY) y = horizonY - 10;
         ctx.lineTo(x, y);
     }
@@ -129,17 +132,16 @@ function renderGridPlane(targetCtx, planeWidth, planeHeight, isMirrored = false)
         let startX = (planeWidth * 0.5) + (i * (planeWidth / 14));
         
         targetCtx.beginPath();
-        targetCtx.moveTo(startX, planeHeight); // Base anchoring points
-        targetCtx.lineTo(planeWidth * 0.5 + (i * 2), horizonY); // Converging endpoint toward true vanishing center
+        targetCtx.moveTo(startX, planeHeight); 
+        targetCtx.lineTo(planeWidth * 0.5 + (i * 2), horizonY); 
         targetCtx.stroke();
     }
 
     // 2. Horizon-bound Transverse Scroll Lines 
     let maxHorizontalLines = 15;
     for (let i = 0; i < maxHorizontalLines; i++) {
-        // Logarithmic spacing sequence creates accurate geometric 3D distance compression
         let progress = ((i + gridOffset) / maxHorizontalLines);
-        let yRatio = Math.pow(progress, 2.5); // Curved projection line spacing multiplier
+        let yRatio = Math.pow(progress, 2.5); // 3D depth spacing curve
         
         let currentY;
         if (isMirrored) {
@@ -148,7 +150,6 @@ function renderGridPlane(targetCtx, planeWidth, planeHeight, isMirrored = false)
             currentY = planeHeight - (yRatio * (planeHeight - horizonY));
         }
 
-        // Keep horizontal strokes clean and bounded within safe vertical viewport borders
         if (currentY >= horizonY && currentY <= planeHeight) {
             targetCtx.beginPath();
             targetCtx.moveTo(0, currentY);
@@ -159,13 +160,13 @@ function renderGridPlane(targetCtx, planeWidth, planeHeight, isMirrored = false)
 }
 
 /**
- * Draw Lower Plane Water Matrix with accurate Horizontal VHS Scanline Shimmering tracking
+ * Draw Lower Plane Water Matrix with accurate Horizontal VHS Scanline Shimmering
  */
 function drawWaterAndGrid() {
     let horizonY = height * 0.5;
     let waterHeight = height * 0.5;
 
-    // Background setup for water floor (Deep dark cyan-magenta void)
+    // Background setup for water floor
     let waterBg = ctx.createLinearGradient(0, horizonY, 0, height);
     waterBg.addColorStop(0, '#003747');
     waterBg.addColorStop(0.2, '#0c102b');
@@ -173,51 +174,45 @@ function drawWaterAndGrid() {
     ctx.fillStyle = waterBg;
     ctx.fillRect(0, horizonY, width, waterHeight);
 
-    // Performance Isolation: Render the baseline mirror grid to an offline canvas memory block
-    const offscreen = document.createElement('canvas');
-    offscreen.width = width;
-    offscreen.height = height;
-    const oCtx = offscreen.getContext('2d');
-    
+    // Clear and reuse our persistent buffer to prevent performance spikes
+    oCtx.clearRect(0, 0, width, height);
     renderGridPlane(oCtx, width, height, true);
 
-    // Apply the mathematical tracking distortion to slice and shimmer lines across the real canvas
+    // Apply tracking distortion slice-by-slice
     for (let y = 0; y < waterHeight; y++) {
         let globalY = horizonY + y;
         
-        // Scanline Sine Wave algorithm to calculate shifting offset frequencies
+        // Scanline Wave formulas
         let waveFactor = Math.sin((y * 0.2) + (time * 0.15)) * 1.8;
         let microShimmer = Math.cos((y * 0.8) - (time * 0.3)) * 0.7;
         let totalOffset = waveFactor + microShimmer;
 
-        // Progressively amplify distortion amplitude as tracking steps forward closer to viewport camera
+        // Scale intensity as it gets closer to the viewer
         let distanceScale = (y / waterHeight);
         totalOffset *= (1 + distanceScale * 3.5);
 
-        // Splice slices from memory canvas and paint onto the primary screen canvas with calculated shifts
+        // Blit line segments to target viewport with offset
         ctx.drawImage(
-            offscreen, 
-            0, globalY, width, 1, // Capture single horizontal structural slice
-            totalOffset, globalY, width, 1 // Render slightly offset tracking block
+            offscreenCanvas, 
+            0, globalY, width, 1, 
+            totalOffset, globalY, width, 1 
         );
     }
 }
 
 /**
- * Central Animation Cycle Loop Controller
+ * Animation Master Loop
  */
 function loop() {
     time += 1;
     
-    // Cycle the horizontal travel offset variables
     gridOffset += (gridSpeed * 0.015);
     if (gridOffset >= 1.0) {
-        gridOffset -= 1.0; // Reset scroll phase loop cleanly without jagged frame skipping
+        gridOffset -= 1.0; 
     }
 
     ctx.clearRect(0, 0, width, height);
 
-    // Order of layer updates
     drawSky();
     drawSun();
     drawMountains();
